@@ -1,6 +1,7 @@
 package com.jungoring.hotdeal.ui
 
 import android.content.Context
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -82,6 +83,11 @@ class CardFactory(private val ctx: Context) {
         val body = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(ui.dp(14f), ui.dp(13f), ui.dp(14f), ui.dp(13f))
+            // 카드를 눌렀을 때 반응이 보이도록 기본 선택 효과를 준다
+            val outValue = TypedValue()
+            if (context.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)) {
+                setBackgroundResource(outValue.resourceId)
+            }
             addView(tags, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
