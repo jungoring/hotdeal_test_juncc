@@ -1,0 +1,87 @@
+name: crawl-hotdeals
+
+# 30분마다 에펨코리아 핫딜을 다시 긁어 docs/data/deals.json 을 갱신합니다.
+# Actions 탭에서 'Run workflow' 로 즉시 한 번 돌려볼 수도 있습니다.
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # UTC 기준. 매 30분. (GitHub 사정에 따라 몇 분 늦게 돌 수 있음)
+  workflow_dispatch:
+
+permissions:
+  contents: write            # 갱신된 JSON 을 저장소에 커밋하기 위해 필요
+
+concurrency:
+  group: crawl-hotdeals
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: scraper/package-lock.json
+
+      - name: Install dependencies
+        working-directory: scraper
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+
+      - name: Install Chromium
+        working-directory: scraper
+        run: npx playwright install --with-deps chromium
+
+      # (선택) 집 PC에서 save-session.mjs 로 만든 세션을 저장소 시크릿
+      # FMK_STORAGE_STATE 에 넣어두면 그 세션으로 접속합니다.
+      - name: Restore session if provided
+        env:
+          SESSION: ${{ secrets.FMK_STORAGE_STATE }}
+        run: |
+          if [ -n "$SESSION" ]; then
+            printf '%s' "$SESSION" > scraper/storage-state.json
+            echo "세션 쿠키를 적용합니다."
+          else
+            echo "저장된 세션이 없습니다. 익명 접속으로 진행합니다."
+          fi
+
+      - name: Crawl hotdeals
+        id: crawl
+        working-directory: scraper
+        continue-on-error: true
+        run: |
+          STORE=""
+          if [ -f storage-state.json ]; then STORE="--storage storage-state.json"; fi
+          node crawl.mjs \
+            --limit 20 \
+            --details 20 \
+            --delay 1800 \
+            --challenge-timeout 90000 \
+            $STORE \
+            --out ../docs/data/deals.json
+
+      - name: Report blocked run
+        if: steps.crawl.outcome == 'failure'
+        run: |
+          echo "::warning::크롤러가 0이 아닌 코드로 끝났습니다 (보안 확인 차단이면 종료 코드 2)."
+          echo "에펨코리아 보안 시스템(Turnstile)이 GitHub Actions의 데이터센터 IP를 막는 경우입니다."
+          echo "이때는 docs/data/deals.json 이 그대로 남으므로 사이트는 마지막 정상 데이터를 계속 보여줍니다."
+          echo "대안: README.md 의 '집 PC에서 직접 갱신' 참고."
+
+      - name: Commit updated data
+        run: |
+          git config user.name  "hotdeal-bot"
+          git config user.email "hotdeal-bot@users.noreply.github.com"
+          if [ -n "$(git status --porcelain docs/data/deals.json)" ]; then
+            git add docs/data/deals.json
+            git commit -m "chore(data): hotdeal $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push
+          else
+            echo "변경된 내용이 없습니다."
+          fi
