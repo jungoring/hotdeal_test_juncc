@@ -326,14 +326,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private suspend fun fetchDeals(): List<Deal> {
-        for (attempt in 0 until 6) {
+        // 보안 확인이 저절로 넘어가는 경우를 대비해 몇 초간 더 기다려 본다
+        for (attempt in 0 until 8) {
             val raw = loader.eval(Parsers.LIST_JS)
             val json = Js.decode(raw)
             if (json != null) {
                 val parsed = Deal.parseList(json)
                 if (parsed.isNotEmpty()) return parsed
             }
-            delay(500)
+            delay(700)
         }
         return emptyList()
     }

@@ -12,7 +12,10 @@ object Parsers {
         (function(){
           try{
             var t = document.title || '';
-            var hasTurnstile = !!document.querySelector("input[name='cf-turnstile-response']");
+            var hasTurnstile = !!document.querySelector("input[name='cf-turnstile-response']")
+              || !!document.querySelector('#challenge-form')
+              || !!document.querySelector('.cf-browser-verification')
+              || !!document.querySelector('#cf-please-wait');
             var blocked = /보안 시스템/.test(t) || hasTurnstile;
             return JSON.stringify({ blocked: blocked, title: t });
           }catch(e){
