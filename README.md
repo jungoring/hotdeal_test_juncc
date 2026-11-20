@@ -1,5 +1,9 @@
 # 펨코 핫딜 필터 (PWA)
 
+**운영 중:** https://jungoring.github.io/hotdeal_test_juncc/ (저장소: https://github.com/jungoring/hotdeal_test_juncc)
+
+> 워크플로 파일은 `setup/crawl.yml`에도 사본이 있습니다. GitHub 웹에서 `.github/workflows/crawl.yml`로 붙여넣기용입니다(연결 토큰에 `workflows` 권한이 없을 때 사용).
+
 에펨코리아 [핫딜 게시판](https://www.fmkorea.com/hotdeal)을 30분마다 긁어서,
 **이전 핫딜보다 싼 것만** 골라 보는 모바일 웹앱입니다.
 서버도 비용도 필요 없습니다. GitHub 저장소 + GitHub Pages + GitHub Actions 만으로 0원에 돌아갑니다.
