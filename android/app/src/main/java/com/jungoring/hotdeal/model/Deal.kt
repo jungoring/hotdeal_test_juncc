@@ -1,32 +1,17 @@
 package com.jungoring.hotdeal.model
 
-import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Calendar
 import java.util.TimeZone
 
-/** '유사한 최근 6개월 핫딜들' 한 줄 */
-data class Comparison(
-    val name: String,
-    val price: String?,
-    val priceKrw: Long?,
-    val diffText: String?,
-    val isCheaper: Boolean?,
-    val savingsKrw: Long?,
-    val postedAt: String?
-)
-
-/** 글 상세 페이지에서만 얻을 수 있는 정보 */
-data class DealDetail(
-    val postedAt: Long?,
+/** 글 상세 페이지에서 확인한 쇼핑몰 링크 */
+data class ShopLookup(
     val shopUrl: String?,
-    val comparisonTotal: Int?,
-    val endedReports: Int,
-    val endedText: Boolean,
-    val comparisons: List<Comparison>
+    /** 핫딜 정보 표를 확인했는데 본문에 외부 쇼핑몰 링크가 없었으면 true */
+    val inspected: Boolean
 )
 
-/** 목록 한 줄(=딜 하나). 상세 정보는 applyDetail() 로 채운다. */
+/** 목록 한 줄(=딜 하나). 쇼핑몰 링크는 카드를 눌렀을 때 그 글만 확인해 채운다. */
 class Deal(
     var id: String?,
     var title: String,
@@ -42,54 +27,21 @@ class Deal(
     var endedBadge: Boolean
 ) {
     var postedAt: Long? = null
-    var endedReports: Int = 0
+
+    /** 실제 쇼핑몰 주소 (상세 페이지의 '링크' 행에서 확인한 값) */
     var shopUrl: String? = null
-    var comparisonTotal: Int? = null
-    var comparisons: List<Comparison> = emptyList()
-    var detailLoaded: Boolean = false
+
+    /** 지금 이 글의 쇼핑몰 링크를 확인하는 중 */
+    var shopLoading: Boolean = false
+
+    /** 확인해 봤지만 본문에 외부 쇼핑몰 링크가 없었음 (다음부터는 펨코 원문으로) */
+    var shopMissing: Boolean = false
 
     val key: String
         get() = id ?: url ?: title
 
-    val priceKrw: Long?
-        get() = parseKrw(price)
-
-    val hasComparisons: Boolean
-        get() = comparisons.isNotEmpty()
-
     val isEnded: Boolean
-        get() = endedReports > 0 || endedBadge
-
-    /** 사이트가 '더 저렴/더 비쌈' 문구를 준 비교가 하나라도 있으면 true/false, 없으면 null */
-    val isCheaper: Boolean?
-        get() {
-            val seen = comparisons.filter { it.isCheaper != null }
-            if (seen.isEmpty()) return null
-            return seen.any { it.isCheaper == true }
-        }
-
-    /** 이전보다 얼마나 저렴한지(최대값) */
-    val bestSavings: Long?
-        get() = comparisons
-            .mapNotNull { c -> if (c.isCheaper == true) c.savingsKrw else null }
-            .filter { it > 0 }
-            .maxOrNull()
-
-    /** 이전 핫딜이 더 저렴했던 폭(음수 savings 중 가장 큰 손해) */
-    val worstOverpay: Long?
-        get() = comparisons
-            .mapNotNull { c -> if (c.isCheaper == false) c.savingsKrw else null }
-            .minOrNull()
-
-    fun applyDetail(detail: DealDetail) {
-        if (detail.postedAt != null) postedAt = detail.postedAt
-        if (!detail.shopUrl.isNullOrBlank()) shopUrl = detail.shopUrl
-        if (detail.comparisonTotal != null) comparisonTotal = detail.comparisonTotal
-        if (detail.endedReports > 0) endedReports = detail.endedReports
-        if (detail.endedText) endedBadge = true
-        comparisons = detail.comparisons
-        detailLoaded = true
-    }
+        get() = endedBadge
 
     companion object {
         private const val BASE = "https://www.fmkorea.com"
@@ -98,7 +50,7 @@ class Deal(
         fun parseList(json: String): List<Deal> {
             val out = ArrayList<Deal>()
             val arr = try {
-                JSONArray(json)
+                org.json.JSONArray(json)
             } catch (e: Exception) {
                 return out
             }
@@ -127,39 +79,15 @@ class Deal(
             return out
         }
 
-        fun parseDetail(json: String): DealDetail {
+        fun parseShopLookup(json: String): ShopLookup {
             val o = try {
                 JSONObject(json)
             } catch (e: Exception) {
                 JSONObject()
             }
-            val comparisons = ArrayList<Comparison>()
-            val arr = o.optJSONArray("comparisons")
-            if (arr != null) {
-                for (i in 0 until arr.length()) {
-                    val c = arr.optJSONObject(i) ?: continue
-                    val name = c.str("name") ?: continue
-                    if (name.isEmpty()) continue
-                    comparisons.add(
-                        Comparison(
-                            name = name,
-                            price = c.str("price"),
-                            priceKrw = c.longOrNull("price_krw"),
-                            diffText = c.str("diff_text"),
-                            isCheaper = c.boolOrNull("is_cheaper"),
-                            savingsKrw = c.longOrNull("savings_krw"),
-                            postedAt = c.str("posted_at")
-                        )
-                    )
-                }
-            }
-            return DealDetail(
-                postedAt = resolveDetailTime(o.str("posted_at")),
+            return ShopLookup(
                 shopUrl = o.str("shop_url"),
-                comparisonTotal = o.intOrNull("comparison_total"),
-                endedReports = o.intOrNull("ended_reports") ?: 0,
-                endedText = o.optBoolean("ended_text", false),
-                comparisons = comparisons
+                inspected = o.optBoolean("inspected", false)
             )
         }
 
@@ -211,30 +139,6 @@ class Deal(
                 return cal.timeInMillis
             }
             return null
-        }
-
-        /** 본문 상단의 '2026.11.20 15:59' */
-        fun resolveDetailTime(raw: String?): Long? {
-            if (raw.isNullOrBlank()) return null
-            val m = Regex("(20\\d{2})\\.(\\d{2})\\.(\\d{2})\\s+(\\d{2}):(\\d{2})").find(raw)
-                ?: return null
-            val cal = Calendar.getInstance(KST)
-            cal.clear()
-            cal.set(
-                m.groupValues[1].toInt(),
-                m.groupValues[2].toInt() - 1,
-                m.groupValues[3].toInt(),
-                m.groupValues[4].toInt(),
-                m.groupValues[5].toInt(),
-                0
-            )
-            return cal.timeInMillis
-        }
-
-        fun parseKrw(text: String?): Long? {
-            if (text.isNullOrBlank()) return null
-            val m = Regex("([\\d,]+)\\s*원").find(text) ?: return null
-            return m.groupValues[1].replace(",", "").toLongOrNull()
         }
     }
 }

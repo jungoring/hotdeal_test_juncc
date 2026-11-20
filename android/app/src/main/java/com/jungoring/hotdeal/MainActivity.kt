@@ -30,7 +30,7 @@ import com.jungoring.hotdeal.data.Js
 import com.jungoring.hotdeal.data.PageLoader
 import com.jungoring.hotdeal.data.Parsers
 import com.jungoring.hotdeal.model.Deal
-import com.jungoring.hotdeal.model.DealDetail
+import com.jungoring.hotdeal.model.ShopLookup
 import com.jungoring.hotdeal.ui.CardFactory
 import com.jungoring.hotdeal.ui.CardViews
 import com.jungoring.hotdeal.ui.Colors
@@ -39,9 +39,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import java.text.SimpleDateFormat
-import java.util.ArrayDeque
 import java.util.Date
 import java.util.Locale
 
@@ -63,7 +64,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var chipsRow: LinearLayout
     private lateinit var votesRow: LinearLayout
     private lateinit var countRow: LinearLayout
-    private lateinit var tCheaper: TextView
     private lateinit var tEnded: TextView
     private lateinit var countText: TextView
     private lateinit var listContainer: LinearLayout
@@ -71,17 +71,16 @@ class MainActivity : AppCompatActivity() {
 
     private val deals = ArrayList<Deal>()
     private val holders = LinkedHashMap<String, CardViews>()
-    private val expanded = HashSet<String>()
-    private val detailQueue = ArrayDeque<Deal>()
 
     private var loadJob: Job? = null
-    private var detailJob: Job? = null
+
+    /** WebView 는 하나뿐이라 목록 읽기와 쇼핑몰 링크 확인이 겹치지 않게 한 번에 하나씩만 쓴다. */
+    private val pageMutex = Mutex()
 
     private var q: String = ""
     private var ex: String = ""
     private var cat: String = "전체"
     private var minVotes: Int = 0
-    private var cheaperOnly: Boolean = false
     private var hideEnded: Boolean = true
     private var collectCount: Int = 20
 
@@ -119,7 +118,6 @@ class MainActivity : AppCompatActivity() {
         chipsRow = findViewById(R.id.chipsRow)
         votesRow = findViewById(R.id.votesRow)
         countRow = findViewById(R.id.countRow)
-        tCheaper = findViewById(R.id.tCheaper)
         tEnded = findViewById(R.id.tEnded)
         countText = findViewById(R.id.countText)
         listContainer = findViewById(R.id.listContainer)
@@ -180,7 +178,6 @@ class MainActivity : AppCompatActivity() {
         ex = prefs.exclude
         cat = prefs.category
         minVotes = prefs.minVotes
-        cheaperOnly = prefs.cheaperOnly
         hideEnded = prefs.hideEnded
         collectCount = prefs.count
     }
@@ -214,12 +211,6 @@ class MainActivity : AppCompatActivity() {
             showChallenge(false)
         }
 
-        tCheaper.setOnClickListener {
-            cheaperOnly = !cheaperOnly
-            prefs.cheaperOnly = cheaperOnly
-            syncToggles()
-            render()
-        }
         tEnded.setOnClickListener {
             hideEnded = !hideEnded
             prefs.hideEnded = hideEnded
@@ -235,9 +226,6 @@ class MainActivity : AppCompatActivity() {
     // ── 수집 ──────────────────────────────────────────────
 
     private fun startLoad() {
-        detailQueue.clear()
-        detailJob?.cancel()
-        detailJob = null
         loadJob?.cancel()
         challengeClosed = false
         lastLoadFailed = false
@@ -254,10 +242,16 @@ class MainActivity : AppCompatActivity() {
 
                 for (page in 1..pages) {
                     val url = if (page == 1) LIST_URL else LIST_URL + "?page=" + page
-                    if (!openPage(url)) {
-                        break
+                    var opened = true
+                    val pageDeals = pageMutex.withLock {
+                        if (!openPage(url)) {
+                            opened = false
+                            emptyList()
+                        } else {
+                            fetchDeals()
+                        }
                     }
-                    val pageDeals = fetchDeals()
+                    if (!opened) break
                     if (pageDeals.isEmpty()) break
                     for (d in pageDeals) {
                         if (seen.add(d.key)) collected.add(d)
@@ -271,7 +265,6 @@ class MainActivity : AppCompatActivity() {
                 deals.clear()
                 deals.addAll(collected.take(collectCount))
                 snapshotAt = System.currentTimeMillis()
-                expanded.clear()
                 refreshFilterRows()
 
                 if (deals.isEmpty()) {
@@ -286,8 +279,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 render()
-                stampLoaded(false)
-                enqueueDetails(deals.toList(), false)
+                stampLoaded()
             } finally {
                 btnRefresh.isEnabled = true
                 btnRefresh.alpha = 1f
@@ -296,7 +288,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 목록 페이지를 연다. 보안 시스템 화면이 나오면 WebView 를 화면에 보여 주고,
+     * 페이지를 연다. 보안 시스템 화면이 나오면 WebView 를 화면에 보여 주고,
      * 사용자가 한 번 통과할 때까지 기다린 뒤 자동으로 이어서 읽는다.
      */
     private suspend fun openPage(url: String): Boolean {
@@ -359,98 +351,96 @@ class MainActivity : AppCompatActivity() {
         scroll.visibility = if (show) View.GONE else View.VISIBLE
         if (show) {
             stamp.text = "보안 확인 대기 중…"
+        } else if (loadJob?.isActive != true) {
+            // 목록 수집 중이 아닐 때(쇼핑몰 링크 확인 중 보안 화면이 떴던 경우)는 상태 문구를 되돌린다
+            stampLoaded()
         }
     }
 
-    // ── 상세(6개월 비교) 순차 수집 ─────────────────────────
+    // ── 쇼핑몰 / 원문 바로가기 ────────────────────────────
 
-    private fun enqueueDetails(items: List<Deal>, toFront: Boolean) {
-        val pending = items.filter { !it.detailLoaded && !it.url.isNullOrBlank() }
-        if (pending.isEmpty()) return
-        if (toFront) {
-            for (i in pending.indices.reversed()) detailQueue.addFirst(pending[i])
-        } else {
-            detailQueue.addAll(pending)
-        }
-        pumpDetails()
-    }
-
-    private fun pumpDetails() {
-        if (detailJob?.isActive == true) return
-        if (detailQueue.isEmpty()) {
-            stampLoaded(true)
+    /**
+     * '쇼핑몰 바로가기'.
+     *  - 이미 주소를 확인한 글: 바로 외부 앱/브라우저로 연다.
+     *  - 아직 모르는 글: 이 글의 상세 페이지 한 건만 읽어 실제 쇼핑몰 주소를 뽑은 뒤 연다.
+     *    (본문에 외부 쇼핑몰 링크가 없으면 펨코 원문을 연다)
+     */
+    private fun openShop(d: Deal) {
+        val known = d.shopUrl
+        if (!known.isNullOrBlank()) {
+            openUrl(known)
             return
         }
-        detailJob = lifecycleScope.launch {
-            var failed = false
-            while (isActive && detailQueue.isNotEmpty()) {
-                val d = detailQueue.removeFirst()
-                if (d.detailLoaded) continue
-                if (!fetchDetail(d)) {
-                    failed = true
-                    break
+        if (d.shopLoading) return
+        if (d.shopMissing) {
+            openPost(d)
+            return
+        }
+
+        d.shopLoading = true
+        updateCard(d)
+        lifecycleScope.launch {
+            val result = lookupShop(d)
+            d.shopLoading = false
+            val resolved = result?.shopUrl
+            when {
+                !resolved.isNullOrBlank() -> {
+                    d.shopUrl = resolved
+                    d.shopMissing = false
+                    updateCard(d)
+                    openUrl(resolved)
                 }
-                delay(DETAIL_DELAY_MS)
+                result?.inspected == true -> {
+                    d.shopMissing = true
+                    updateCard(d)
+                    Toast.makeText(
+                        this@MainActivity,
+                        "이 글에는 쇼핑몰 링크가 없어 펨코 원문을 엽니다",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    openPost(d)
+                }
+                else -> {
+                    updateCard(d)
+                    if (isActive) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "쇼핑몰 링크를 확인하지 못했습니다. 한 번 더 눌러 주세요",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
             }
-            detailJob = null
-            if (isActive) stampLoaded(true)
-            // 막혀서 멈춘 게 아니라면, 기다리는 사이에 대기열에 새로 들어온 건을 이어서 읽는다
-            if (!failed && detailQueue.isNotEmpty()) pumpDetails()
         }
     }
 
-    /** @return 계속 진행해도 되면 true (막혔거나 사용자가 닫으면 false) */
-    private suspend fun fetchDetail(d: Deal): Boolean {
+    private fun openPost(d: Deal) {
         val url = d.url
         if (url.isNullOrBlank()) {
-            d.detailLoaded = true
-            return true
+            Toast.makeText(this, "원문 주소가 없습니다", Toast.LENGTH_SHORT).show()
+            return
         }
-        if (!loader.load(url)) {
-            d.detailLoaded = true
-            return true
-        }
-        if (isBlocked()) {
-            challengeClosed = false
-            showChallenge(true)
-            var waited = 0L
-            while (waited < CHALLENGE_WAIT_MS && isBlocked()) {
-                if (challengeClosed) break
-                delay(1500)
-                waited += 1500
-            }
-            showChallenge(false)
-            if (challengeClosed || isBlocked()) return false
-            if (!loader.load(url)) {
-                d.detailLoaded = true
-                return true
-            }
-        }
+        openUrl(url)
+    }
 
-        var detail: DealDetail? = null
-        for (attempt in 0 until 3) {
-            val json = Js.decode(loader.eval(Parsers.DETAIL_JS))
-            if (json != null && json.startsWith("{")) {
-                val parsed = Deal.parseDetail(json)
-                detail = parsed
-                if (parsed.comparisons.isNotEmpty()) break
+    /** 글 상세 페이지 한 건을 읽어 쇼핑몰 주소를 뽑는다. (실패하면 null) */
+    private suspend fun lookupShop(d: Deal): ShopLookup? {
+        val postUrl = d.url ?: return null
+        return pageMutex.withLock {
+            if (!openPage(postUrl)) return@withLock null
+            var last: ShopLookup? = null
+            for (attempt in 0 until 4) {
+                val json = Js.decode(loader.eval(Parsers.SHOP_JS))
+                if (json != null && json.startsWith("{")) {
+                    val parsed = Deal.parseShopLookup(json)
+                    if (!parsed.shopUrl.isNullOrBlank()) return@withLock parsed
+                    if (parsed.inspected) return@withLock parsed
+                    last = parsed
+                }
+                delay(500)
             }
-            delay(600)
+            last
         }
-        val loaded = detail
-        if (loaded != null) {
-            val wasMatching = matches(d)
-            d.applyDetail(loaded)
-            if (matches(d) != wasMatching) {
-                render()
-            } else {
-                updateCard(d)
-            }
-            stampLoaded(false)
-        } else {
-            d.detailLoaded = true
-        }
-        return true
     }
 
     // ── 필터 ─────────────────────────────────────────────
@@ -458,7 +448,6 @@ class MainActivity : AppCompatActivity() {
     private fun matches(d: Deal): Boolean {
         if (cat != "전체" && (d.category ?: "") != cat) return false
         if (minVotes > 0 && (d.upvotes ?: 0) < minVotes) return false
-        if (cheaperOnly && d.isCheaper != true) return false
         if (hideEnded && d.isEnded) return false
 
         val haystack = ((d.title) + " " + (d.mall ?: "") + " " + (d.category ?: "")).lowercase()
@@ -477,13 +466,11 @@ class MainActivity : AppCompatActivity() {
         ex = ""
         cat = "전체"
         minVotes = 0
-        cheaperOnly = false
         hideEnded = true
         prefs.q = q
         prefs.exclude = ex
         prefs.category = cat
         prefs.minVotes = minVotes
-        prefs.cheaperOnly = cheaperOnly
         prefs.hideEnded = hideEnded
         qInput.setText("")
         exInput.setText("")
@@ -545,7 +532,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun syncToggles() {
-        styleToggle(tCheaper, cheaperOnly, "이전보다 싼 것만")
         styleToggle(tEnded, hideEnded, "종료된 딜 숨김")
     }
 
@@ -626,7 +612,7 @@ class MainActivity : AppCompatActivity() {
         if (filtered.isEmpty()) {
             renderEmpty(
                 "조건에 맞는 딜이 없습니다",
-                "필터를 조금 풀어보세요. ‘이전보다 싼 것만’을 끄면 전체 " + deals.size + "건을 볼 수 있습니다."
+                "검색어를 줄이거나 ‘필터 초기화’를 눌러 전체 " + deals.size + "건을 볼 수 있습니다."
             )
             return
         }
@@ -634,7 +620,7 @@ class MainActivity : AppCompatActivity() {
         for (d in filtered) {
             val holder = cardFactory.create()
             bindCard(holder, d)
-            holder.body.setOnClickListener { toggle(d) }
+            holder.body.setOnClickListener { openShop(d) }
             listContainer.addView(holder.root)
             holders[d.key] = holder
         }
@@ -647,26 +633,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindCard(holder: CardViews, d: Deal) {
-        cardFactory.bind(holder, d, expanded.contains(d.key), ago(d.postedAt)) { url ->
-            openUrl(url)
-        }
+        cardFactory.bind(
+            holder,
+            d,
+            ago(d.postedAt),
+            { openShop(d) },
+            { openPost(d) }
+        )
     }
 
     private fun updateCard(d: Deal) {
         val holder = holders[d.key] ?: return
         bindCard(holder, d)
-    }
-
-    private fun toggle(d: Deal) {
-        val key = d.key
-        val wasExpanded = expanded.contains(key)
-        if (wasExpanded) {
-            expanded.remove(key)
-        } else {
-            expanded.add(key)
-            if (!d.detailLoaded) enqueueDetails(listOf(d), true)
-        }
-        updateCard(d)
     }
 
     private fun renderEmpty(title: String, message: String) {
@@ -698,15 +676,13 @@ class MainActivity : AppCompatActivity() {
 
     // ── 상태 표시 / 유틸 ──────────────────────────────────
 
-    private fun stampLoaded(finished: Boolean) {
+    private fun stampLoaded() {
         if (deals.isEmpty()) {
             stamp.text = "수집된 딜이 없습니다"
             return
         }
-        val detailCount = deals.count { it.detailLoaded }
         val when_ = snapshotAt?.let { fmtClock(it) } ?: "방금"
-        val tail = if (finished) " 완료" else " 수집 중…"
-        stamp.text = when_ + " 기준 · " + deals.size + "건 · 비교 " + detailCount + "/" + deals.size + tail
+        stamp.text = when_ + " 기준 · " + deals.size + "건"
     }
 
     private fun fmtClock(ts: Long): String =
@@ -746,7 +722,6 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val LIST_URL = "https://www.fmkorea.com/hotdeal"
-        private const val DETAIL_DELAY_MS = 1200L
         private const val CHALLENGE_WAIT_MS = 180_000L
         private const val UA =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +

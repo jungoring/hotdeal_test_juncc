@@ -23,10 +23,6 @@ class FilterPrefs(context: Context) {
         get() = sp.getInt("minVotes", 0)
         set(value) { sp.edit().putInt("minVotes", value).apply() }
 
-    var cheaperOnly: Boolean
-        get() = sp.getBoolean("cheaperOnly", false)
-        set(value) { sp.edit().putBoolean("cheaperOnly", value).apply() }
-
     var hideEnded: Boolean
         get() = sp.getBoolean("hideEnded", true)
         set(value) { sp.edit().putBoolean("hideEnded", value).apply() }

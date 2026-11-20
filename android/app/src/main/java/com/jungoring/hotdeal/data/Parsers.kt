@@ -2,7 +2,7 @@ package com.jungoring.hotdeal.data
 
 /**
  * WebView 안에서 실행하는 파서들.
- * 기존 scraper/crawl.mjs 의 parseListInPage / parseDetailInPage 와 같은 선택자를 쓴다.
+ * 기존 scraper/crawl.mjs 의 parseListInPage 와 같은 선택자를 쓴다.
  * (2026-11-20 실제 에펨코리아 목록·상세 페이지에서 결과 확인)
  */
 object Parsers {
@@ -40,7 +40,7 @@ object Parsers {
             if (im) id = im[1];
             var titleEl = li.querySelector('h3.title .ellipsis-target') || titleLink;
             var title = clean(titleEl ? titleEl.textContent : '');
-            title = title.replace(/\s*\[\d+\]\s*$/, '').trim();
+            title = title.replace(/\s*\[\d+\]\s*${'$'}/, '').trim();
             var info = li.querySelector('.hotdeal_info');
             var infoText = clean(info ? info.textContent : '');
             var mall = null, price = null, shipping = null;
@@ -89,92 +89,89 @@ object Parsers {
         })()
     """.trimIndent()
 
-    /** 글 상세 파서 → JSON 객체 문자열 */
-    val DETAIL_JS: String = """
+    /**
+     * 글 상세 페이지에서 '쇼핑몰 바로가기' 주소만 뽑는다 → {"shop_url":..., "inspected":true}
+     *
+     * 에펨코 핫딜 글은 본문 위 표의 '링크' 행에 제휴 링크가 들어 있다.
+     *  - a.hotdeal_url  (예: <a class="hotdeal_url" href="https://link.fmkorea.org/link.php?url=...">
+     *                       https://link.coupang.com/a/xxxx</a>)
+     *  - 또는  <tr><th>링크</th><td><a href="...">...</a></td></tr>
+     * href 는 link.fmkorea.org/link.php?url=... 같은 리다이렉트 래퍼인 경우가 많아
+     * url 파라미터를 풀어서 실제 쇼핑몰 주소로 돌려준다. 화면에 보이는 주소(anchor text)가
+     * 잘리지 않은 http(s) 주소면 그것을 우선 쓴다.
+     */
+    val SHOP_JS: String = """
         (function(){
           function clean(s){ return (s||'').replace(/\s+/g,' ').trim(); }
-          var out = {
-            posted_at: null, shop_url: null, comparison_total: null,
-            ended_reports: 0, ended_text: false, comparisons: []
-          };
+
+          function unwrap(u){
+            var out = u || '';
+            for (var i=0;i<4;i++){
+              if (!out) break;
+              var isWrapper = /link\.fmkorea\.(org|com)/i.test(out) || /\/link\.php/i.test(out);
+              if (!isWrapper) break;
+              var m = out.match(/[?&]url=([^&]+)/i);
+              if (!m) break;
+              var dec = m[1];
+              try { dec = decodeURIComponent(m[1].replace(/\+/g, ' ')); } catch(e){ dec = m[1]; }
+              if (!dec || dec === out) break;
+              out = dec;
+            }
+            return out;
+          }
+
+          function external(u){
+            if (!u) return null;
+            var t = clean(u);
+            if (!/^https?:\/\//i.test(t)) return null;
+            if (/^https?:\/\/([a-z0-9.-]+\.)?fmkorea\.(com|org)/i.test(t)) return null;
+            return t;
+          }
+
+          var out = { shop_url: null, inspected: false, source: null };
           try{
-            var bodyText = (document.body && document.body.innerText) ? document.body.innerText : '';
-            out.ended_text = /종료된 핫딜입니다/.test(bodyText);
+            var cand = [];
+            var hot = document.querySelectorAll('a.hotdeal_url');
+            for (var h=0;h<hot.length;h++) cand.push(hot[h]);
 
-            var head = clean(bodyText.slice(0, 4000));
-            var dm = head.match(/(20\d{2})\.(\d{2})\.(\d{2})\s+(\d{2}):(\d{2})/);
-            if (dm) out.posted_at = dm[1] + '.' + dm[2] + '.' + dm[3] + ' ' + dm[4] + ':' + dm[5];
-
-            var trs = document.querySelectorAll('tr');
-            for (var i=0;i<trs.length;i++){
-              var tr = trs[i];
-              var th = tr.querySelector('th');
+            var rows = document.querySelectorAll('tr');
+            var sawTable = false;
+            for (var i=0;i<rows.length;i++){
+              var th = rows[i].querySelector('th');
               if (!th) continue;
               var label = clean(th.textContent);
-              var rowText = clean(tr.innerText);
-              if (label === '링크') {
-                var a = tr.querySelector('a[href^="http"]');
-                if (a) out.shop_url = a.getAttribute('href');
-              } else if (label === '종료 신고') {
-                var em = rowText.match(/(\d+)\s*명/);
-                out.ended_reports = em ? parseInt(em[1],10) : 1;
-              }
-            }
-            if (!out.shop_url) {
-              var arts = document.querySelectorAll('article a[href^="http"]');
-              for (var j=0;j<arts.length;j++){
-                var href = arts[j].getAttribute('href') || '';
-                if (href.indexOf('fmkorea.com') === -1) { out.shop_url = href; break; }
+              if (label.indexOf('쇼핑몰') === 0 || label.indexOf('가격') === 0 || label.indexOf('상품명') === 0) sawTable = true;
+              if (label.indexOf('링크') >= 0) {
+                sawTable = true;
+                var a1 = rows[i].querySelector('td a[href]') || rows[i].querySelector('a[href]');
+                if (a1) cand.push(a1);
               }
             }
 
-            var uls = document.querySelectorAll('ul');
-            var ul = null;
-            for (var k=0;k<uls.length;k++){
-              if ((uls[k].innerText || '').indexOf('유사한 최근 6개월 핫딜들') !== -1) ul = uls[k];
+            var pick = null;
+            for (var j=0;j<cand.length;j++){
+              var el = cand[j];
+              var href = el.getAttribute('href') || '';
+              var text = clean(el.textContent);
+              var fromText = external(text);
+              var fromHref = external(unwrap(href));
+              var textCut = /…|\.\.\./.test(text);
+              if (fromText && !textCut) { pick = fromText; break; }
+              if (fromHref) { pick = fromHref; break; }
+              if (fromText) { pick = fromText; break; }
             }
-            if (ul) {
-              var kids = ul.children;
-              for (var n=0;n<kids.length;n++){
-                var li = kids[n];
-                if (li.tagName !== 'LI') continue;
-                var text = clean(li.innerText);
-                if (text.indexOf('유사한 최근 6개월') !== -1) continue;
-                var totalM = text.match(/총\s*(\d+)\s*개/);
-                if (/^더\s*보기/.test(text)) {
-                  if (totalM) out.comparison_total = parseInt(totalM[1],10);
-                  continue;
-                }
-                var link = li.querySelector('a');
-                var name = clean(link ? link.innerText : text.split('\n')[0]);
-                var pm = text.match(/가격\s*:\s*([0-9,]+\s*원|[$][\d.,]+|다양|가격다양함|[^\s]+)/);
-                var priceText = pm ? pm[1] : null;
-                var dmm = text.match(/본문 상품이\s*[\d,]+\s*원\s*더\s*(?:저렴|비쌈)/);
-                var diffText = dmm ? dmm[0] : null;
-                var pd = text.match(/등록일\s*:\s*(\d{4}-\d{2}-\d{2})/);
-                var posted = pd ? pd[1] : null;
-                var priceKrw = null;
-                if (priceText) {
-                  var won = priceText.match(/([\d,]+)\s*원/);
-                  if (won) priceKrw = parseInt(won[1].replace(/,/g,''),10);
-                }
-                var isCheaper = null, savings = null;
-                if (diffText) {
-                  var num = parseInt(diffText.replace(/[^0-9]/g,''),10);
-                  if (/더\s*저렴/.test(diffText)) { isCheaper = true; savings = num; }
-                  else { isCheaper = false; savings = -num; }
-                }
-                out.comparisons.push({
-                  name: name, price: priceText, price_krw: priceKrw,
-                  diff_text: diffText, is_cheaper: isCheaper,
-                  savings_krw: savings, posted_at: posted
-                });
-              }
-              if (out.comparison_total === null) {
-                var tm = clean(ul.innerText).match(/총\s*(\d+)\s*개/);
-                if (tm) out.comparison_total = parseInt(tm[1],10);
+
+            if (!pick) {
+              var scope = document.querySelector('.xe_content') || document.querySelector('article') || document.body;
+              var all = scope.querySelectorAll('a[href]');
+              for (var k=0;k<all.length;k++){
+                var u = external(unwrap(all[k].getAttribute('href') || '')) || external(clean(all[k].textContent));
+                if (u) { pick = u; break; }
               }
             }
+
+            out.shop_url = pick;
+            out.inspected = sawTable;
           }catch(e){
             out.error = String(e);
           }

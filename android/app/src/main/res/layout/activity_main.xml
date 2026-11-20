@@ -182,25 +182,9 @@
                     android:orientation="horizontal">
 
                     <TextView
-                        android:id="@+id/tCheaper"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:gravity="center"
-                        android:paddingStart="6dp"
-                        android:paddingTop="9dp"
-                        android:paddingEnd="6dp"
-                        android:paddingBottom="9dp"
-                        android:text="이전보다 싼 것만"
-                        android:textColor="@color/dim"
-                        android:textSize="12.5sp"
-                        android:textStyle="bold" />
-
-                    <TextView
                         android:id="@+id/tEnded"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
                         android:layout_weight="1"
                         android:gravity="center"
                         android:paddingStart="6dp"
@@ -270,7 +254,7 @@
                 android:lineSpacingExtra="3dp"
                 android:paddingStart="20dp"
                 android:paddingEnd="20dp"
-                android:text="데이터: 에펨코리아 핫딜 · 휴대폰에서 직접 접속해 실시간 수집\n가격 비교는 각 글의 ‘유사한 최근 6개월 핫딜들’ 기준입니다."
+                android:text="데이터: 에펨코리아 핫딜 · 휴대폰에서 직접 접속해 실시간 수집\n카드를 누르면 쇼핑몰로, ‘펨코 원문’은 게시글로 바로 이동합니다."
                 android:textColor="@color/dim2"
                 android:textSize="11sp" />
         </LinearLayout>
