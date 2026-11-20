@@ -366,10 +366,15 @@ class MainActivity : AppCompatActivity() {
 
                 savedAt = System.currentTimeMillis()
                 persist()
-                if (mode != LoadMode.AUTO) shown = LIST_CHUNK
+                val newCount = deals.count { it.key !in beforeKeys }
+                if (mode == LoadMode.DEEP) {
+                    // 방금 채운 이전 글이 목록 아래에 바로 보이도록 그린 카드 수를 늘린다
+                    shown = (shown + newCount).coerceAtLeast(LIST_CHUNK)
+                } else if (mode == LoadMode.PAGES) {
+                    shown = LIST_CHUNK
+                }
                 refreshFilterRows()
 
-                val newCount = deals.count { it.key !in beforeKeys }
                 stampSummary(newCount = newCount)
                 render()
 
