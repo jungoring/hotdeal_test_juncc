@@ -1,0 +1,14 @@
+{
+  "name": "fmkorea-hotdeal-crawler",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "에펨코리아 핫딜 목록 + 유사 핫딜 가격 비교를 수집하는 크롤러",
+  "scripts": {
+    "crawl": "node crawl.mjs --out ../docs/data/deals.json",
+    "selftest": "node crawl.mjs --fixture fixtures/list-sample.html --out ../docs/data/_selftest.json"
+  },
+  "dependencies": {
+    "playwright": "1.65.1"
+  }
+}

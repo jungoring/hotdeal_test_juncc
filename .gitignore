@@ -1,0 +1,4 @@
+node_modules/
+.DS_Store
+storage-state.json
+docs/data/_selftest.json
