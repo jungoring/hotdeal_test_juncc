@@ -69,6 +69,32 @@ object Parsers {
               var cm2 = clean(li.innerText).match(/\[(\d+)\]\s*쇼핑몰\s*:/);
               if (cm2) comments = parseInt(cm2[1],10);
             }
+            // 썸네일 (2026-11-20 실제 목록 확인: <img class="thumb" src="//image.fmkorea.com/..."
+            // data-original="//image.fmkorea.com/filesn/cache/thumb/.../_70x50.crop.webp">)
+            //  - 화면 밖 글은 지연 로딩이라 src 가 transparent.gif 이고 실제 주소는 data-original 에 있다.
+            //  - 썸네일이 없는 글(텍스트 글)도 있으므로 없으면 null.
+            var thumbnail = null;
+            var tImg = li.querySelector('img.thumb') || li.querySelector('a[href] img.thumb');
+            if (tImg) {
+              var cand = [
+                tImg.getAttribute('data-original'),
+                tImg.getAttribute('data-src'),
+                tImg.getAttribute('data-lazy'),
+                tImg.getAttribute('src')
+              ];
+              for (var q=0;q<cand.length;q++){
+                var tu = cand[q];
+                if (!tu) continue;
+                tu = clean(tu);
+                if (!tu) continue;
+                if (/transparent\.gif|classes\/lazy|blank\.(gif|png)|spacer/i.test(tu)) continue;
+                if (tu.indexOf('//') === 0) tu = 'https:' + tu;
+                else if (tu.charAt(0) === '/') tu = 'https://image.fmkorea.com' + tu;
+                if (!/^https?:\/\//i.test(tu)) continue;
+                thumbnail = tu;
+                break;
+              }
+            }
             var regEl = li.querySelector('span.regdate');
             var regdate = clean(regEl ? regEl.textContent : '');
             var auEl = li.querySelector('span.author');
@@ -82,7 +108,8 @@ object Parsers {
             out.push({
               id: id, title: title, mall: mall, price: price, shipping: shipping,
               category: category, upvotes: upvotes, comments: comments,
-              regdate: regdate, author: author, ended_badge: ended
+              regdate: regdate, author: author, ended_badge: ended,
+              thumbnail: thumbnail
             });
           }
           return JSON.stringify(out);

@@ -153,15 +153,29 @@ npm run selftest     # fixtures/list-sample.html 로 목록 파서 확인
 같은 핫딜 필터를 **휴대폰 앱**으로 쓰는 버전입니다. `android/` 폴더가 앱 소스이고,
 `setup/build-apk.yml` 이 GitHub Actions 에서 APK 를 만들어 릴리즈에 올립니다.
 
-- 패키지 `com.jungoring.hotdeal` · 앱 이름 **펨코 핫딜**
+- 패키지 `com.jungoring.hotdeal` · 앱 이름 **펨코 핫딜** (v1.0.2 / versionCode 3)
 - Kotlin + AndroidX + WebView 하이브리드 (compileSdk/targetSdk 34, minSdk 26, AGP 8.5.2, Gradle 8.7)
 - **서버·쿠키 파일이 필요 없습니다.** 앱이 휴대폰 IP로 `https://www.fmkorea.com/hotdeal` 에 직접 접속해
-  목록(1~3페이지, 20/40/60건)만 가볍게 읽어 옵니다. 글마다 상세 페이지를 미리 긁는 동작은 없습니다.
+  목록을 읽어 옵니다. 글마다 상세 페이지를 미리 긁는 동작은 없습니다.
+- **7일 누적 저장**: 읽어 온 딜을 기기(`filesDir/deals_cache.json`)에 쌓아 두고, 앱을 켜면 저장된 목록을
+  곧바로 그립니다. 7일(168시간)이 지난 글은 자동으로 지우고, 같은 글은 추천수·댓글수·종료 여부·썸네일만
+  최신값으로 갱신합니다.
+- **새로고침은 새 글만**: 저장된 최신 글을 만날 때까지 최대 15페이지를 훑고 멈춥니다(캐시가 비었을 때는
+  15페이지까지 채웁니다). 1회 수집 범위는 `새 글만 / 3p / 5p / 15p` 중에서 고를 수 있고,
+  목록 맨 아래 **[⏮ 이전 글 더 불러오기]** 로 어제·그제 글을 3페이지씩 계속 파고들 수 있습니다.
+- **제품 썸네일**: 목록의 `img.thumb`(지연 로딩 시 `data-original`)에서 주소를 뽑아 제목 옆 64dp 둥근
+  정사각형으로 표시합니다. `image.fmkorea.com` 은 Referer 없이 요청하면 200, 다른 사이트 Referer 는
+  302 로 막히므로 Referer 없이 받아 메모리·디스크에 캐시합니다. 이미지가 없는 글은 상자를 숨깁니다.
 - 웹 버전과 같은 필터: 검색어 / 제외 키워드 / 카테고리 칩 / 추천수(전체·3+·5+·10+) /
-  ‘종료된 딜 숨김’ / 수집 건수(20·40·60). 설정은 기기에 저장됩니다.
+  ‘종료된 딜 숨김’. 설정은 기기에 저장됩니다.
 - 카드마다 **쇼핑몰 바로가기 / 펨코 원문** 버튼이 항상 붙어 있고, 카드를 눌러도 쇼핑몰로 바로 갑니다.
   쇼핑몰 주소를 아직 모르는 글은 누른 순간 그 글의 상세 페이지만 한 번 읽어 ‘링크’ 행에서 실제 쇼핑몰
   주소를 뽑아 엽니다(제휴 리다이렉트 링크는 원래 주소로 풀어서). 외부 링크가 없는 글은 펨코 원문이 열립니다.
+- **고정 서명 키**: `android/app/debug-fixed.keystore`(PKCS12, 비밀번호 `android`, 별칭 `androiddebugkey`)를
+  저장소에 함께 두고 debug 빌드가 이 키로 서명합니다. 그래서 빌드마다 서명이 바뀌지 않아
+  **다음 업데이트부터는 앱을 지우지 않고 덮어쓰기 설치**됩니다.
+  (1.0.1 → 1.0.2 로 올라갈 때만 한 번 삭제 후 설치가 필요합니다. 인증서 SHA-256:
+  `B9:8B:20:90:52:07:CF:B5:1C:A3:47:E8:41:82:2C:88:38:67:21:CD:83:3F:EB:DD:B2:30:6A:08:D8:57:FE:DA`)
 
 ### APK 빌드 켜기
 
@@ -181,15 +195,19 @@ npm run selftest     # fixtures/list-sample.html 로 목록 파서 확인
 android/
   settings.gradle.kts / build.gradle.kts / gradle.properties
   app/build.gradle.kts
+  app/debug-fixed.keystore  고정 디버그 서명 키 (PKCS12)
   app/src/main/AndroidManifest.xml
   app/src/main/java/com/jungoring/hotdeal/
-    MainActivity.kt          화면·필터·수집 흐름 (WebView 로 목록/상세 읽기, 보안 확인 처리)
-    data/Parsers.kt          사이트에서 실행하는 파서 (scraper/crawl.mjs 와 같은 선택자)
+    MainActivity.kt          화면·필터·수집 흐름 (7일 누적, 새 글만 새로고침, 이전 글 더 불러오기)
+    data/Parsers.kt          사이트에서 실행하는 파서 (썸네일 추출 포함)
+    data/DealStore.kt        7일 누적 저장(filesDir/deals_cache.json) + 병합/정리
     data/PageLoader.kt       WebView 페이지 열기/JS 실행을 코루틴으로 감싼 것
     data/Js.kt               evaluateJavascript 결과(JSON 문자열) 풀기
-    data/FilterPrefs.kt      필터 설정 저장(SharedPreferences)
-    model/Deal.kt            딜 모델 + JSON 파싱 + 시각/금액 변환
-    ui/CardViews.kt          딜 카드 그리기
+    data/FilterPrefs.kt      필터·수집 범위 설정 저장(SharedPreferences)
+    model/Deal.kt            딜 모델 + JSON 파싱/저장 + 시각 변환
+    ui/CardViews.kt          딜 카드 그리기 (제목 옆 64dp 썸네일)
+    ui/ThumbLoader.kt        썸네일 다운로드·메모리/디스크 캐시
+    ui/RoundedImageView.kt   둥근 모서리 썸네일 뷰
     ui/Ui.kt                 색/치수/둥근 배경 헬퍼
 ```
 
@@ -208,5 +226,8 @@ cd android
 gradle assembleDebug
 # 결과: android/app/build/outputs/apk/debug/app-debug.apk
 ```
+
+> 서명 키 파일은 `app/debug-fixed.keystore` 이고 `app/build.gradle.kts` 의 `signingConfigs.fixedDebug`
+> 가 이를 씁니다. 이 파일을 잃어버리면 다음 빌드부터 앱을 덮어쓰기 설치할 수 없으니 지우지 마세요.
 
 > 저장소에 커밋되는 것은 소스뿐입니다(`build/`, `.gradle/`, `local.properties` 는 `.gitignore`).

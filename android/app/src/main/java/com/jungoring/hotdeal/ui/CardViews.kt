@@ -15,6 +15,8 @@ class CardViews(
     val body: LinearLayout,
     val tags: LinearLayout,
     val title: TextView,
+    val thumb: RoundedImageView,
+    val thumbBox: LinearLayout,
     val price: TextView,
     val ship: TextView,
     val meta: TextView,
@@ -23,7 +25,7 @@ class CardViews(
     val btnPost: TextView
 )
 
-class CardFactory(private val ctx: Context) {
+class CardFactory(private val ctx: Context, private val thumbs: ThumbLoader) {
 
     private val ui = Ui(ctx)
 
@@ -42,13 +44,31 @@ class CardFactory(private val ctx: Context) {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        val title = ui.text(15.5f, Colors.TXT, true).apply {
-            setPadding(0, ui.dp(7f), 0, ui.dp(8f))
-            setLineSpacing(ui.dp(2f).toFloat(), 1f)
+        val title = ui.text(17f, Colors.TXT, true).apply {
+            setLineSpacing(ui.dp(3f).toFloat(), 1f)
+            setPadding(0, 0, 0, 0)
         }
 
-        val price = ui.text(17f, Colors.TXT, true)
-        val ship = ui.text(12f, Colors.DIM, false).apply {
+        // 제목 옆 작은 제품 사진 (64dp 둥근 정사각형)
+        val thumb = RoundedImageView(ctx, 14f)
+        val thumbBox = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(thumb, LinearLayout.LayoutParams(ui.dp(64f), ui.dp(64f)))
+        }
+
+        val titleRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.TOP
+            setPadding(0, ui.dp(8f), 0, ui.dp(9f))
+            addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(thumbBox, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = ui.dp(10f) })
+        }
+
+        val price = ui.text(19f, Colors.TXT, true)
+        val ship = ui.text(13.5f, Colors.DIM, false).apply {
             setPadding(ui.dp(8f), 0, 0, 0)
         }
         val priceRow = LinearLayout(ctx).apply {
@@ -64,8 +84,8 @@ class CardFactory(private val ctx: Context) {
             ))
         }
 
-        val meta = ui.text(12f, Colors.DIM2, false).apply {
-            setPadding(0, ui.dp(8f), 0, 0)
+        val meta = ui.text(13f, Colors.DIM2, false).apply {
+            setPadding(0, ui.dp(9f), 0, 0)
         }
 
         val btnShop = actionButton("쇼핑몰 바로가기", true)
@@ -73,7 +93,7 @@ class CardFactory(private val ctx: Context) {
 
         val actions = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, ui.dp(12f), 0, 0)
+            setPadding(0, ui.dp(13f), 0, 0)
             addView(btnShop, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(btnPost, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginStart = ui.dp(8f)
@@ -82,7 +102,7 @@ class CardFactory(private val ctx: Context) {
 
         val body = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(ui.dp(14f), ui.dp(13f), ui.dp(14f), ui.dp(13f))
+            setPadding(ui.dp(14f), ui.dp(13f), ui.dp(14f), ui.dp(14f))
             // 카드를 눌렀을 때 반응이 보이도록 기본 선택 효과를 준다
             val outValue = TypedValue()
             if (context.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)) {
@@ -92,7 +112,7 @@ class CardFactory(private val ctx: Context) {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ))
-            addView(title, LinearLayout.LayoutParams(
+            addView(titleRow, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ))
@@ -120,6 +140,8 @@ class CardFactory(private val ctx: Context) {
             body = body,
             tags = tags,
             title = title,
+            thumb = thumb,
+            thumbBox = thumbBox,
             price = price,
             ship = ship,
             meta = meta,
@@ -152,6 +174,10 @@ class CardFactory(private val ctx: Context) {
         v.tags.visibility = if (v.tags.childCount > 0) View.VISIBLE else View.GONE
 
         v.title.text = d.title
+
+        // 제목 옆 작은 제품 사진 (없는 글은 상자를 숨기고 제목이 넓게 쓰인다)
+        thumbs.load(v.thumb, d.thumbnail)
+        v.thumbBox.visibility = if (d.thumbnail.isNullOrBlank()) View.GONE else View.VISIBLE
 
         val priceText = d.price
         v.price.text = if (priceText.isNullOrBlank()) "가격 미표기" else priceText
@@ -193,9 +219,9 @@ class CardFactory(private val ctx: Context) {
     // ── 조각들 ────────────────────────────────────────────
 
     private fun chip(label: String, fill: Int, textColor: Int, solid: Boolean): TextView {
-        val tv = ui.text(11f, textColor, true)
+        val tv = ui.text(12f, textColor, true)
         tv.text = label
-        tv.setPadding(ui.dp(7f), ui.dp(2f), ui.dp(7f), ui.dp(2f))
+        tv.setPadding(ui.dp(8f), ui.dp(3f), ui.dp(8f), ui.dp(3f))
         tv.background = if (solid) {
             ui.round(fill, 6f)
         } else {
@@ -211,10 +237,11 @@ class CardFactory(private val ctx: Context) {
     }
 
     private fun actionButton(label: String, primary: Boolean): TextView {
-        val tv = ui.text(13f, if (primary) 0xFFFFFFFF.toInt() else Colors.TXT, true)
+        val tv = ui.text(14f, if (primary) 0xFFFFFFFF.toInt() else Colors.TXT, true)
         tv.text = label
         tv.gravity = Gravity.CENTER
-        tv.setPadding(ui.dp(6f), ui.dp(11f), ui.dp(6f), ui.dp(11f))
+        // 손가락으로 누르기 편하도록 위아래 여백을 넉넉히 (약 46dp 높이)
+        tv.setPadding(ui.dp(6f), ui.dp(13f), ui.dp(6f), ui.dp(13f))
         tv.background = if (primary) {
             ui.round(Colors.ACCENT, 11f)
         } else {

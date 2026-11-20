@@ -28,6 +28,12 @@ class Deal(
 ) {
     var postedAt: Long? = null
 
+    /** 목록 제목 옆 작은 제품 이미지 주소 (없는 글도 있음) */
+    var thumbnail: String? = null
+
+    /** 이 기기가 처음 이 글을 본 시각 (7일 보관 판단용) */
+    var firstSeen: Long = System.currentTimeMillis()
+
     /** 실제 쇼핑몰 주소 (상세 페이지의 '링크' 행에서 확인한 값) */
     var shopUrl: String? = null
 
@@ -42,6 +48,34 @@ class Deal(
 
     val isEnded: Boolean
         get() = endedBadge
+
+    /** 최신 순 정렬용 (글 번호가 클수록 최신) */
+    val sortId: Long
+        get() = id?.toLongOrNull() ?: 0L
+
+    /** 7일 보관 기간을 잴 때 쓰는 기준 시각 */
+    val ageBase: Long
+        get() = postedAt ?: firstSeen
+
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("id", id)
+        put("title", title)
+        put("mall", mall)
+        put("price", price)
+        put("shipping", shipping)
+        put("category", category)
+        put("upvotes", upvotes ?: JSONObject.NULL)
+        put("comments", comments ?: JSONObject.NULL)
+        put("author", author)
+        put("regdate", regdate)
+        put("url", url)
+        put("ended", endedBadge)
+        put("posted_at", postedAt ?: JSONObject.NULL)
+        put("thumbnail", thumbnail)
+        put("first_seen", firstSeen)
+        put("shop_url", shopUrl)
+        put("shop_missing", shopMissing)
+    }
 
     companion object {
         private const val BASE = "https://www.fmkorea.com"
@@ -74,11 +108,39 @@ class Deal(
                     endedBadge = o.optBoolean("ended_badge", false)
                 )
                 deal.postedAt = resolvePostedAt(deal.regdate)
+                deal.thumbnail = o.str("thumbnail")
+                deal.firstSeen = System.currentTimeMillis()
                 out.add(deal)
             }
             return out
         }
 
+        /** 저장 파일에서 읽어 온 한 건 */
+        fun fromJson(o: JSONObject): Deal? {
+            val title = o.str("title") ?: return null
+            val deal = Deal(
+                id = o.str("id"),
+                title = title,
+                mall = o.str("mall"),
+                price = o.str("price"),
+                shipping = o.str("shipping"),
+                category = o.str("category"),
+                upvotes = o.intOrNull("upvotes"),
+                comments = o.intOrNull("comments"),
+                author = o.str("author"),
+                regdate = o.str("regdate"),
+                url = o.str("url"),
+                endedBadge = o.optBoolean("ended", false)
+            )
+            deal.postedAt = o.longOrNull("posted_at") ?: resolvePostedAt(deal.regdate)
+            deal.thumbnail = o.str("thumbnail")
+            deal.shopUrl = o.str("shop_url")
+            deal.shopMissing = o.optBoolean("shop_missing", false)
+            deal.firstSeen = o.longOrNull("first_seen") ?: System.currentTimeMillis()
+            return deal
+        }
+
+        /** 목록 파서 JSON 배열을 Deal 로 (저장 파일 병합에서도 쓴다) */
         fun parseShopLookup(json: String): ShopLookup {
             val o = try {
                 JSONObject(json)

@@ -48,7 +48,7 @@
                         android:layout_height="wrap_content"
                         android:text="펨코 핫딜"
                         android:textColor="@color/txt"
-                        android:textSize="19sp"
+                        android:textSize="20sp"
                         android:textStyle="bold" />
 
                     <Space
@@ -61,13 +61,13 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:background="@drawable/bg_ghost"
-                        android:paddingStart="12dp"
-                        android:paddingTop="8dp"
-                        android:paddingEnd="12dp"
-                        android:paddingBottom="8dp"
+                        android:paddingStart="14dp"
+                        android:paddingTop="10dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="10dp"
                         android:text="↻ 새로고침"
                         android:textColor="@color/dim"
-                        android:textSize="12sp"
+                        android:textSize="13sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
@@ -79,7 +79,7 @@
                     android:layout_marginBottom="10dp"
                     android:text="에펨코리아에서 불러오는 중…"
                     android:textColor="@color/dim2"
-                    android:textSize="11.5sp" />
+                    android:textSize="12.5sp" />
 
                 <EditText
                     android:id="@+id/q"
@@ -96,7 +96,7 @@
                     android:paddingBottom="11dp"
                     android:textColor="@color/txt"
                     android:textColorHint="@color/dim2"
-                    android:textSize="14sp"
+                    android:textSize="15sp"
                     android:hint="검색어 (상품·쇼핑몰)" />
 
                 <EditText
@@ -114,7 +114,7 @@
                     android:paddingBottom="9dp"
                     android:textColor="@color/txt"
                     android:textColorHint="@color/dim2"
-                    android:textSize="13sp"
+                    android:textSize="14sp"
                     android:hint="제외 키워드 (쉼표로 구분)  예: 중고, 리퍼, 반품" />
 
                 <HorizontalScrollView
@@ -143,7 +143,7 @@
                         android:layout_marginEnd="8dp"
                         android:text="추천"
                         android:textColor="@color/dim2"
-                        android:textSize="11.5sp" />
+                        android:textSize="12.5sp" />
 
                     <LinearLayout
                         android:id="@+id/votesRow"
@@ -164,9 +164,9 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginEnd="8dp"
-                        android:text="건수"
+                        android:text="수집"
                         android:textColor="@color/dim2"
-                        android:textSize="11.5sp" />
+                        android:textSize="12.5sp" />
 
                     <LinearLayout
                         android:id="@+id/countRow"
@@ -193,7 +193,7 @@
                         android:paddingBottom="9dp"
                         android:text="종료된 딜 숨김"
                         android:textColor="@color/dim"
-                        android:textSize="12.5sp"
+                        android:textSize="13.5sp"
                         android:textStyle="bold" />
                 </LinearLayout>
             </LinearLayout>
@@ -215,7 +215,7 @@
                     android:layout_height="wrap_content"
                     android:text="0건"
                     android:textColor="@color/dim2"
-                    android:textSize="12sp" />
+                    android:textSize="13sp" />
 
                 <Space
                     android:layout_width="0dp"
@@ -232,7 +232,7 @@
                     android:paddingBottom="6dp"
                     android:text="필터 초기화"
                     android:textColor="@color/accent"
-                    android:textSize="12sp"
+                    android:textSize="13sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
@@ -254,9 +254,9 @@
                 android:lineSpacingExtra="3dp"
                 android:paddingStart="20dp"
                 android:paddingEnd="20dp"
-                android:text="데이터: 에펨코리아 핫딜 · 휴대폰에서 직접 접속해 실시간 수집\n카드를 누르면 쇼핑몰로, ‘펨코 원문’은 게시글로 바로 이동합니다."
+                android:text="데이터: 에펨코리아 핫딜 · 최근 7일치를 휴대폰에 저장해 두고 새 글만 이어서 받습니다.\n카드를 누르면 쇼핑몰로, ‘펨코 원문’은 게시글로 바로 이동합니다."
                 android:textColor="@color/dim2"
-                android:textSize="11sp" />
+                android:textSize="12sp" />
         </LinearLayout>
     </ScrollView>
 
@@ -280,7 +280,7 @@
             android:layout_height="wrap_content"
             android:text="에펨코리아 보안 확인"
             android:textColor="@color/txt"
-            android:textSize="15sp"
+            android:textSize="16sp"
             android:textStyle="bold" />
 
         <TextView
@@ -289,7 +289,7 @@
             android:layout_marginTop="5dp"
             android:text="아래 화면에서 사람 확인을 한 번만 통과하면 자동으로 이어서 불러옵니다. (한 번 통과하면 다음부터는 보통 다시 묻지 않습니다)"
             android:textColor="@color/dim"
-            android:textSize="12sp" />
+            android:textSize="13sp" />
 
         <TextView
             android:id="@+id/btnChallengeClose"
@@ -304,7 +304,7 @@
             android:paddingBottom="7dp"
             android:text="닫기"
             android:textColor="@color/dim"
-            android:textSize="12sp"
+            android:textSize="13sp"
             android:textStyle="bold" />
     </LinearLayout>
 

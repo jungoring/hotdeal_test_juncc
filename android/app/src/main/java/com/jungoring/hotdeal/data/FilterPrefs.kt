@@ -27,12 +27,13 @@ class FilterPrefs(context: Context) {
         get() = sp.getBoolean("hideEnded", true)
         set(value) { sp.edit().putBoolean("hideEnded", value).apply() }
 
-    var count: Int
+    /** 새로고침 때 1회 수집 범위: 0=새 글만(자동), 3/5/15=그 페이지 수만큼 */
+    var scopePages: Int
         get() {
-            val value = sp.getInt("count", 20)
-            return if (value == 20 || value == 40 || value == 60) value else 20
+            val value = sp.getInt("scope", 0)
+            return if (value == 0 || value == 3 || value == 5 || value == 15) value else 0
         }
-        set(value) { sp.edit().putInt("count", value).apply() }
+        set(value) { sp.edit().putInt("scope", value).apply() }
 
     private companion object {
         const val NAME = "fmk_filters"

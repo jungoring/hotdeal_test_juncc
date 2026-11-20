@@ -48,6 +48,12 @@ jobs:
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
 
+      # 고정 디버그 키로 서명됐는지 매 빌드마다 확인한다 (서명이 바뀌면 덮어쓰기 설치가 안 된다)
+      - name: Verify APK signature
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -56,7 +62,9 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # main 브랜치 빌드만 최신 APK 릴리즈를 갱신한다 (검증용 브랜치 빌드가 배포본을 덮지 않도록)
       - name: Publish APK to release
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-apk
