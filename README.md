@@ -3,6 +3,7 @@
 **운영 중:** https://jungoring.github.io/hotdeal_test_juncc/ (저장소: https://github.com/jungoring/hotdeal_test_juncc)
 
 > 워크플로 파일은 `setup/crawl.yml`에도 사본이 있습니다. GitHub 웹에서 `.github/workflows/crawl.yml`로 붙여넣기용입니다(연결 토큰에 `workflows` 권한이 없을 때 사용).
+> 안드로이드 APK 빌드 워크플로도 같은 이유로 `setup/build-apk.yml` 사본으로 두었습니다. → [6. 안드로이드 앱](#6-안드로이드-앱-apk)
 
 에펨코리아 [핫딜 게시판](https://www.fmkorea.com/hotdeal)을 30분마다 긁어서,
 **이전 핫딜보다 싼 것만** 골라 보는 모바일 웹앱입니다.
@@ -144,3 +145,66 @@ npm run selftest     # fixtures/list-sample.html 로 목록 파서 확인
 - **Public 저장소**는 Actions 시간이 무제한 무료, **Private**는 월 2,000분 한도 안에서 돌아갑니다(이 작업은 1회 5분 이내).
 - 상세 페이지를 20건 읽으면 1회 실행에 약 1분 안팎이 걸립니다. 상대 서버를 배려해 `--delay` 를 1000ms 아래로 내리지 마세요.
 - 사이트 개편으로 목록/비교 영역의 마크업이 바뀌면 파서(`scraper/crawl.mjs` 안의 `parseListInPage`, `parseDetailInPage`)를 손봐야 합니다. 그때는 `--debug-dir` 로 HTML을 떠서 확인하세요.
+
+---
+
+## 6. 안드로이드 앱 (APK)
+
+같은 핫딜 필터를 **휴대폰 앱**으로 쓰는 버전입니다. `android/` 폴더가 앱 소스이고,
+`setup/build-apk.yml` 이 GitHub Actions 에서 APK 를 만들어 릴리즈에 올립니다.
+
+- 패키지 `com.jungoring.hotdeal` · 앱 이름 **펨코 핫딜**
+- Kotlin + AndroidX + WebView 하이브리드 (compileSdk/targetSdk 34, minSdk 26, AGP 8.5.2, Gradle 8.7)
+- **서버·쿠키 파일이 필요 없습니다.** 앱이 휴대폰 IP로 `https://www.fmkorea.com/hotdeal` 에 직접 접속해
+  목록(1~3페이지, 20/40/60건)과 각 글의 “유사한 최근 6개월 핫딜들”을 그때그때 읽어 옵니다.
+- 웹 버전과 같은 필터: 검색어 / 제외 키워드 / 카테고리 칩 / 추천수(전체·3+·5+·10+) /
+  ‘이전보다 싼 것만’ / ‘종료된 딜 숨김’ / 수집 건수(20·40·60). 설정은 기기에 저장됩니다.
+- 카드를 탭하면 최근 6개월 유사 핫딜 비교와 **쇼핑몰 바로가기 / 펨코 원문 보기** 버튼이 펼쳐집니다.
+
+### APK 빌드 켜기
+
+`.github/workflows/` 에는 이 저장소의 토큰 권한(`workflows` 없음) 때문에 직접 올리지 못하고
+`setup/build-apk.yml` 에 사본을 두었습니다. 웹에서 한 번만 옮겨 주세요.
+
+1. GitHub 저장소 → **Add file → Create new file**
+2. 파일 이름: `.github/workflows/build-apk.yml`
+3. `setup/build-apk.yml` 내용을 그대로 복사해 붙여넣고 **Commit**
+4. **Actions 탭 → build-apk → Run workflow** (또는 `android/` 를 수정해 푸시하면 자동 실행)
+5. 빌드가 끝나면 **Releases → latest-apk** 에 `app-debug.apk` 가 첨부됩니다.
+   휴대폰 브라우저로 그 링크를 열어 파일을 눌러 받고, ‘출처를 알 수 없는 앱 설치 허용’ 을 한 번 켜면 설치됩니다.
+
+### 폴더 구조 (android/)
+
+```
+android/
+  settings.gradle.kts / build.gradle.kts / gradle.properties
+  app/build.gradle.kts
+  app/src/main/AndroidManifest.xml
+  app/src/main/java/com/jungoring/hotdeal/
+    MainActivity.kt          화면·필터·수집 흐름 (WebView 로 목록/상세 읽기, 보안 확인 처리)
+    data/Parsers.kt          사이트에서 실행하는 파서 (scraper/crawl.mjs 와 같은 선택자)
+    data/PageLoader.kt       WebView 페이지 열기/JS 실행을 코루틴으로 감싼 것
+    data/Js.kt               evaluateJavascript 결과(JSON 문자열) 풀기
+    data/FilterPrefs.kt      필터 설정 저장(SharedPreferences)
+    model/Deal.kt            딜 모델 + JSON 파싱 + 시각/금액 변환
+    ui/CardViews.kt          딜 카드 그리기
+    ui/Ui.kt                 색/치수/둥근 배경 헬퍼
+```
+
+### 보안 확인(Cloudflare Turnstile)은 어떻게 처리하나
+
+앱은 목록을 읽기 전에 WebView 화면이 “에펨코리아 보안 시스템” 인지 먼저 확인합니다.
+보안 화면이면 그 WebView 를 화면 앞으로 꺼내 **사람 확인을 한 번만 통과**하게 하고,
+통과하면 쿠키를 유지한 채 자동으로 이어서 목록을 읽습니다.
+보안 화면이 아니면 WebView 는 앱 화면 뒤에서 조용히 동작합니다.
+
+### 로컬에서 빌드해 보기 (선택)
+
+```bash
+cd android
+# ANDROID_HOME 이 필요합니다 (Android SDK Platform 34 + Build-Tools 34.0.0)
+gradle assembleDebug
+# 결과: android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+> 저장소에 커밋되는 것은 소스뿐입니다(`build/`, `.gradle/`, `local.properties` 는 `.gitignore`).

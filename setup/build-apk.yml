@@ -1,0 +1,73 @@
+name: build-apk
+
+# 안드로이드 앱을 빌드해 실행 가능한 APK 를 만듭니다.
+#  - Actions 탭에서 'Run workflow' 로 직접 실행하거나,
+#  - android/ 폴더가 바뀌어 main 에 푸시되면 자동으로 돕니다.
+# 빌드가 끝나면 'latest-apk' 릴리즈에 app-debug.apk 가 올라가서,
+# 휴대폰 브라우저로 바로 눌러 내려받을 수 있습니다.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'android/**'
+      - '.github/workflows/build-apk.yml'
+
+permissions:
+  contents: write            # 릴리즈(APK 첨부)를 만들기 위해 필요
+
+concurrency:
+  group: build-apk
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    defaults:
+      run:
+        working-directory: android
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish APK to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-apk
+          name: 최신 APK (자동 빌드)
+          body: |
+            커밋 `${{ github.sha }}` 에서 자동 빌드한 **디버그 APK** 입니다.
+
+            휴대폰 브라우저에서 아래 `app-debug.apk` 를 눌러 내려받고,
+            '출처를 알 수 없는 앱 설치 허용' 을 한 번 켜면 설치됩니다.
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+          make_latest: true
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
