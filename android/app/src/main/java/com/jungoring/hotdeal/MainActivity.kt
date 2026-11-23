@@ -2,6 +2,7 @@ package com.jungoring.hotdeal
 
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -12,6 +13,8 @@ import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -88,6 +91,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pagerBottom: LinearLayout
     private lateinit var btnTop: TextView
     private lateinit var btnRefresh: TextView
+    private lateinit var btnFilterToggle: TextView
+    private lateinit var filterHint: TextView
+    private lateinit var filterDetail: LinearLayout
+    private lateinit var btnClearQ: TextView
+    private lateinit var btnClearEx: TextView
+
+    /** 상세 필터(추천·수집·종료 숨김) 영역을 펼쳐 두었는지 (v1.0.4) */
+    private var filtersOpen: Boolean = true
 
     /** 7일 누적 목록 (최신 글 순) */
     private val deals = ArrayList<Deal>()
@@ -162,6 +173,11 @@ class MainActivity : AppCompatActivity() {
         pagerBottom = findViewById(R.id.pagerBottom)
         btnTop = findViewById(R.id.btnTop)
         btnRefresh = findViewById(R.id.btnRefresh)
+        btnFilterToggle = findViewById(R.id.btnFilterToggle)
+        filterHint = findViewById(R.id.filterHint)
+        filterDetail = findViewById(R.id.filterDetail)
+        btnClearQ = findViewById(R.id.btnClearQ)
+        btnClearEx = findViewById(R.id.btnClearEx)
 
         setupTopButton()
     }
@@ -222,6 +238,7 @@ class MainActivity : AppCompatActivity() {
         minVotes = prefs.minVotes
         hideEnded = prefs.hideEnded
         scopePages = prefs.scopePages
+        filtersOpen = prefs.filtersOpen
     }
 
     private fun setupFilterUi() {
@@ -234,6 +251,7 @@ class MainActivity : AppCompatActivity() {
                 q = s?.toString() ?: ""
                 prefs.q = q
                 pageIndex = 0
+                syncClearButtons()
                 scheduleRender()
             }
         })
@@ -244,9 +262,51 @@ class MainActivity : AppCompatActivity() {
                 ex = s?.toString() ?: ""
                 prefs.exclude = ex
                 pageIndex = 0
+                syncClearButtons()
                 scheduleRender()
             }
         })
+
+        // ✕ 지우기 : 한 번에 비우고 바로 이어서 칠 수 있게 포커스는 남긴다
+        btnClearQ.setOnClickListener {
+            qInput.setText("")
+            qInput.requestFocus()
+        }
+        btnClearEx.setOnClickListener {
+            exInput.setText("")
+            exInput.requestFocus()
+        }
+
+        // 키보드의 '검색 / 완료' 를 누르면 키보드를 내리고 포커스를 풀어 결과를 바로 본다
+        val imeListener = TextView.OnEditorActionListener { _, actionId, _ ->
+            when (actionId) {
+                EditorInfo.IME_ACTION_SEARCH, EditorInfo.IME_ACTION_DONE -> {
+                    uiHandler.removeCallbacks(renderTask)
+                    render()
+                    hideKeyboard()
+                    true
+                }
+                else -> false
+            }
+        }
+        qInput.setOnEditorActionListener(imeListener)
+        exInput.setOnEditorActionListener(imeListener)
+
+        // 검색어를 치려고 입력란을 누르면 상세 필터를 잠시 접어 목록 자리를 넓힌다
+        val foldForTyping = View.OnFocusChangeListener { _, hasFocus ->
+            if (hasFocus && filtersOpen) {
+                filtersOpen = false
+                syncFilterDetail()
+            }
+        }
+        qInput.setOnFocusChangeListener(foldForTyping)
+        exInput.setOnFocusChangeListener(foldForTyping)
+
+        btnFilterToggle.setOnClickListener {
+            filtersOpen = !filtersOpen
+            prefs.filtersOpen = filtersOpen
+            syncFilterDetail()
+        }
 
         btnRefresh.setOnClickListener { startLoad(LoadMode.AUTO) }
         findViewById<TextView>(R.id.btnReset).setOnClickListener { resetFilters() }
@@ -265,7 +325,47 @@ class MainActivity : AppCompatActivity() {
 
         refreshFilterRows()
         syncToggles()
+        syncFilterDetail()
+        syncClearButtons()
         render()
+    }
+
+    // ── 필터 접기/펼치기 · 입력 지우기 · 키보드 ──────────────
+
+    /**
+     * 상세 필터(추천·수집·종료 숨김)를 접거나 펴고, 접었을 때는 지금 걸린 조건을
+     * 한 줄로 요약해 보여 준다. (목록이 길어 키보드가 올라오면 목록이 거의 안 보이던 문제)
+     */
+    private fun syncFilterDetail() {
+        filterDetail.visibility = if (filtersOpen) View.VISIBLE else View.GONE
+        btnFilterToggle.text = if (filtersOpen) "필터 ▲" else "필터 ▼"
+        btnFilterToggle.setTextColor(if (filtersOpen) Colors.DIM else Colors.TXT)
+
+        if (filtersOpen) {
+            filterHint.visibility = View.GONE
+            return
+        }
+        val parts = ArrayList<String>()
+        if (minVotes > 0) parts.add("추천 " + minVotes + "+")
+        parts.add(if (scopePages <= 0) "새 글만" else scopePages.toString() + "p 수집")
+        parts.add(if (hideEnded) "종료 숨김" else "종료 포함")
+        filterHint.text = parts.joinToString(" · ")
+        filterHint.visibility = View.VISIBLE
+    }
+
+    /** 입력값이 있을 때만 ✕ 를 띄운다 */
+    private fun syncClearButtons() {
+        btnClearQ.visibility = if (qInput.text.isNullOrEmpty()) View.GONE else View.VISIBLE
+        btnClearEx.visibility = if (exInput.text.isNullOrEmpty()) View.GONE else View.VISIBLE
+    }
+
+    /** 키보드를 내리고 입력 포커스를 풀어 목록이 가려지지 않게 한다 */
+    private fun hideKeyboard() {
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(qInput.windowToken, 0)
+        exInput.clearFocus()
+        qInput.clearFocus()
+        currentFocus?.clearFocus()
     }
 
     // ── 맨 위로 버튼 ─────────────────────────────────────
@@ -733,10 +833,13 @@ class MainActivity : AppCompatActivity() {
             }
             countRow.addView(tv, weightParams(4))
         }
+
+        syncFilterDetail()
     }
 
     private fun syncToggles() {
         styleToggle(tEnded, hideEnded, "종료된 딜 숨김")
+        syncFilterDetail()
     }
 
     private fun styleToggle(tv: TextView, on: Boolean, label: String) {

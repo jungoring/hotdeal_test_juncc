@@ -18,6 +18,8 @@
         android:background="@color/bg"
         android:clipToPadding="false"
         android:fillViewport="true"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
         android:scrollbars="none">
 
         <LinearLayout
@@ -42,14 +44,46 @@
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
 
-                    <TextView
-                        android:id="@+id/appTitle"
+                    <!-- 제목 오른쪽에 작게 'by 준영' -->
+                    <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/app_name"
-                        android:textColor="@color/txt"
-                        android:textSize="20sp"
-                        android:textStyle="bold" />
+                        android:baselineAligned="true"
+                        android:baselineAlignedChildIndex="0"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/appTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/app_name"
+                            android:textColor="@color/txt"
+                            android:textSize="20sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/appByLabel"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="7dp"
+                            android:includeFontPadding="false"
+                            android:text="by"
+                            android:textColor="@color/dim2"
+                            android:textSize="10.5sp" />
+
+                        <TextView
+                            android:id="@+id/appBy"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="3dp"
+                            android:includeFontPadding="false"
+                            android:text="준영"
+                            android:textColor="@color/dim"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+
+                    </LinearLayout>
 
                     <Space
                         android:layout_width="0dp"
@@ -81,41 +115,87 @@
                     android:textColor="@color/dim2"
                     android:textSize="12.5sp" />
 
-                <EditText
-                    android:id="@+id/q"
+                <!-- 검색어: 입력값이 있으면 오른쪽에 ✕ 지우기 버튼 -->
+                <FrameLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="7dp"
-                    android:background="@drawable/bg_input"
-                    android:importantForAutofill="no"
-                    android:inputType="text"
-                    android:maxLines="1"
-                    android:paddingStart="12dp"
-                    android:paddingTop="11dp"
-                    android:paddingEnd="12dp"
-                    android:paddingBottom="11dp"
-                    android:textColor="@color/txt"
-                    android:textColorHint="@color/dim2"
-                    android:textSize="15sp"
-                    android:hint="검색어 (상품·쇼핑몰)" />
+                    android:layout_marginBottom="7dp">
 
-                <EditText
-                    android:id="@+id/ex"
+                    <EditText
+                        android:id="@+id/q"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_input"
+                        android:imeOptions="actionSearch"
+                        android:importantForAutofill="no"
+                        android:inputType="text"
+                        android:maxLines="1"
+                        android:paddingStart="12dp"
+                        android:paddingTop="11dp"
+                        android:paddingEnd="42dp"
+                        android:paddingBottom="11dp"
+                        android:singleLine="true"
+                        android:textColor="@color/txt"
+                        android:textColorHint="@color/dim2"
+                        android:textSize="15sp"
+                        android:hint="검색어 (상품·쇼핑몰)" />
+
+                    <TextView
+                        android:id="@+id/btnClearQ"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:layout_gravity="end|center_vertical"
+                        android:layout_marginEnd="6dp"
+                        android:background="@drawable/bg_clear"
+                        android:clickable="true"
+                        android:focusable="false"
+                        android:gravity="center"
+                        android:text="✕"
+                        android:textColor="@color/dim"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <!-- 제외 키워드 -->
+                <FrameLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="9dp"
-                    android:background="@drawable/bg_input_dashed"
-                    android:importantForAutofill="no"
-                    android:inputType="text"
-                    android:maxLines="1"
-                    android:paddingStart="12dp"
-                    android:paddingTop="9dp"
-                    android:paddingEnd="12dp"
-                    android:paddingBottom="9dp"
-                    android:textColor="@color/txt"
-                    android:textColorHint="@color/dim2"
-                    android:textSize="14sp"
-                    android:hint="제외 키워드 (쉼표로 구분)  예: 중고, 리퍼, 반품" />
+                    android:layout_marginBottom="9dp">
+
+                    <EditText
+                        android:id="@+id/ex"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_input_dashed"
+                        android:imeOptions="actionDone"
+                        android:importantForAutofill="no"
+                        android:inputType="text"
+                        android:maxLines="1"
+                        android:paddingStart="12dp"
+                        android:paddingTop="9dp"
+                        android:paddingEnd="42dp"
+                        android:paddingBottom="9dp"
+                        android:singleLine="true"
+                        android:textColor="@color/txt"
+                        android:textColorHint="@color/dim2"
+                        android:textSize="14sp"
+                        android:hint="제외 키워드 (쉼표로 구분)  예: 중고, 리퍼, 반품" />
+
+                    <TextView
+                        android:id="@+id/btnClearEx"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:layout_gravity="end|center_vertical"
+                        android:layout_marginEnd="6dp"
+                        android:background="@drawable/bg_clear"
+                        android:clickable="true"
+                        android:focusable="false"
+                        android:gravity="center"
+                        android:text="✕"
+                        android:textColor="@color/dim"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
+                </FrameLayout>
 
                 <HorizontalScrollView
                     android:layout_width="match_parent"
@@ -129,6 +209,49 @@
                         android:layout_height="wrap_content"
                         android:orientation="horizontal" />
                 </HorizontalScrollView>
+
+                <!-- 상세 필터 접기/펼치기 : 목록 볼 공간을 넓힌다 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/btnFilterToggle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_ghost"
+                        android:paddingStart="12dp"
+                        android:paddingTop="7dp"
+                        android:paddingEnd="12dp"
+                        android:paddingBottom="7dp"
+                        android:text="필터 ▲"
+                        android:textColor="@color/dim"
+                        android:textSize="12.5sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/filterHint"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="9dp"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:text=""
+                        android:textColor="@color/dim2"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <!-- ── 상세 필터 (추천·수집·종료 숨김) ── -->
+                <LinearLayout
+                    android:id="@+id/filterDetail"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:orientation="vertical">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -195,6 +318,8 @@
                         android:textColor="@color/dim"
                         android:textSize="13.5sp"
                         android:textStyle="bold" />
+                </LinearLayout>
+
                 </LinearLayout>
             </LinearLayout>
 

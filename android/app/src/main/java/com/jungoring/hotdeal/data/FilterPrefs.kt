@@ -35,6 +35,11 @@ class FilterPrefs(context: Context) {
         }
         set(value) { sp.edit().putInt("scope", value).apply() }
 
+    /** 상세 필터(추천·수집·종료 숨김)를 펼쳐 두었는지 (v1.0.4) */
+    var filtersOpen: Boolean
+        get() = sp.getBoolean("filtersOpen", true)
+        set(value) { sp.edit().putBoolean("filtersOpen", value).apply() }
+
     private companion object {
         const val NAME = "fmk_filters"
     }
