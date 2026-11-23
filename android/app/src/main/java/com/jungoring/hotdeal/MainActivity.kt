@@ -84,6 +84,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tEnded: TextView
     private lateinit var countText: TextView
     private lateinit var listContainer: LinearLayout
+    private lateinit var pagerTop: LinearLayout
+    private lateinit var pagerBottom: LinearLayout
+    private lateinit var btnTop: TextView
     private lateinit var btnRefresh: TextView
 
     /** 7일 누적 목록 (최신 글 순) */
@@ -102,8 +105,14 @@ class MainActivity : AppCompatActivity() {
     private var hideEnded: Boolean = true
     private var scopePages: Int = 0
 
-    /** 지금 화면에 그린 카드 수 (누적 목록이 길어졌으니 한 번에 다 그리지 않는다) */
-    private var shown: Int = LIST_CHUNK
+    /** 지금 보고 있는 목록 페이지 (0부터). 한 페이지에 ITEMS_PER_PAGE 개씩 */
+    private var pageIndex: Int = 0
+
+    /** 마지막으로 그린 필터 결과의 전체 페이지 수 (페이지 바 표시용) */
+    private var pageCount: Int = 1
+
+    /** 맨 위로 버튼을 띄우기 전에 스크롤이 멈추기를 기다리는 예약 */
+    private val topButtonTask = Runnable { revealTopButton() }
 
     /** 저장된 목록 중 가장 깊게 읽어 둔 페이지 번호 */
     private var deepPages: Int = 0
@@ -149,7 +158,12 @@ class MainActivity : AppCompatActivity() {
         tEnded = findViewById(R.id.tEnded)
         countText = findViewById(R.id.countText)
         listContainer = findViewById(R.id.listContainer)
+        pagerTop = findViewById(R.id.pagerTop)
+        pagerBottom = findViewById(R.id.pagerBottom)
+        btnTop = findViewById(R.id.btnTop)
         btnRefresh = findViewById(R.id.btnRefresh)
+
+        setupTopButton()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -219,7 +233,7 @@ class MainActivity : AppCompatActivity() {
             override fun afterTextChanged(s: Editable?) {
                 q = s?.toString() ?: ""
                 prefs.q = q
-                shown = LIST_CHUNK
+                pageIndex = 0
                 scheduleRender()
             }
         })
@@ -229,7 +243,7 @@ class MainActivity : AppCompatActivity() {
             override fun afterTextChanged(s: Editable?) {
                 ex = s?.toString() ?: ""
                 prefs.exclude = ex
-                shown = LIST_CHUNK
+                pageIndex = 0
                 scheduleRender()
             }
         })
@@ -244,7 +258,7 @@ class MainActivity : AppCompatActivity() {
         tEnded.setOnClickListener {
             hideEnded = !hideEnded
             prefs.hideEnded = hideEnded
-            shown = LIST_CHUNK
+            pageIndex = 0
             syncToggles()
             render()
         }
@@ -252,6 +266,59 @@ class MainActivity : AppCompatActivity() {
         refreshFilterRows()
         syncToggles()
         render()
+    }
+
+    // ── 맨 위로 버튼 ─────────────────────────────────────
+
+    /**
+     * 스크롤 중에는 숨기고, 스크롤이 멈추고 400ms 뒤에(맨 위 근처가 아닐 때만) 띄운다.
+     * 누르면 지금 보고 있는 페이지의 첫 글로 올라간다.
+     */
+    private fun setupTopButton() {
+        btnTop.setOnClickListener {
+            scrollToListTop()
+            fadeTopButton(false)
+        }
+        scroll.setOnScrollChangeListener(
+            View.OnScrollChangeListener { _, _, scrollY, _, _ -> onListScrolled(scrollY) }
+        )
+    }
+
+    private fun onListScrolled(scrollY: Int) {
+        uiHandler.removeCallbacks(topButtonTask)
+        fadeTopButton(false)
+        if (scrollY < ui.dp(TOP_BUTTON_MIN_DP) || !canScrollList()) return
+        uiHandler.postDelayed(topButtonTask, TOP_BUTTON_DELAY_MS)
+    }
+
+    private fun revealTopButton() {
+        if (challengeBar.visibility == View.VISIBLE) return
+        if (!canScrollList()) return
+        if (scroll.scrollY < ui.dp(TOP_BUTTON_MIN_DP)) return
+        if (btnTop.visibility != View.VISIBLE) {
+            btnTop.visibility = View.VISIBLE
+        }
+        fadeTopButton(true)
+    }
+
+    private fun fadeTopButton(show: Boolean) {
+        if (show) {
+            btnTop.animate().cancel()
+            btnTop.visibility = View.VISIBLE
+            btnTop.animate().alpha(1f).setDuration(170L).start()
+        } else {
+            if (btnTop.visibility != View.VISIBLE) return
+            btnTop.animate().cancel()
+            btnTop.animate().alpha(0f).setDuration(130L).withEndAction {
+                if (btnTop.alpha <= 0.01f) btnTop.visibility = View.GONE
+            }.start()
+        }
+    }
+
+    /** 목록이 지금 화면보다 길어서 스크롤할 거리가 있는지 */
+    private fun canScrollList(): Boolean {
+        val child = scroll.getChildAt(0) ?: return false
+        return child.height > scroll.height + ui.dp(40f)
     }
 
     // ── 저장된 7일치 먼저 그리기 ─────────────────────────
@@ -367,12 +434,8 @@ class MainActivity : AppCompatActivity() {
                 savedAt = System.currentTimeMillis()
                 persist()
                 val newCount = deals.count { it.key !in beforeKeys }
-                if (mode == LoadMode.DEEP) {
-                    // 방금 채운 이전 글이 목록 아래에 바로 보이도록 그린 카드 수를 늘린다
-                    shown = (shown + newCount).coerceAtLeast(LIST_CHUNK)
-                } else if (mode == LoadMode.PAGES) {
-                    shown = LIST_CHUNK
-                }
+                // 새로고침(AUTO/PAGES)은 최신 글이 첫 페이지에 오므로 맨 앞으로 돌아가고,
+                // '이전 글 더 불러오기'(DEEP)는 보던 페이지를 그대로 두고 뒤 페이지가 늘어난다.
                 refreshFilterRows()
 
                 stampSummary(newCount = newCount)
@@ -472,6 +535,9 @@ class MainActivity : AppCompatActivity() {
         challengeBar.visibility = if (show) View.VISIBLE else View.GONE
         scroll.visibility = if (show) View.GONE else View.VISIBLE
         if (show) {
+            // 보안 확인 화면이 앞에 나오면 목록 위에 떠 있던 버튼도 함께 숨긴다
+            uiHandler.removeCallbacks(topButtonTask)
+            fadeTopButton(false)
             stamp.text = "보안 확인 대기 중…"
         } else if (!loading) {
             // 목록 수집 중이 아닐 때(쇼핑몰 링크 확인 중 보안 화면이 떴던 경우)는 상태 문구를 되돌린다
@@ -598,7 +664,7 @@ class MainActivity : AppCompatActivity() {
         prefs.hideEnded = hideEnded
         qInput.setText("")
         exInput.setText("")
-        shown = LIST_CHUNK
+        pageIndex = 0
         refreshFilterRows()
         syncToggles()
         render()
@@ -620,7 +686,7 @@ class MainActivity : AppCompatActivity() {
             chip.setOnClickListener {
                 cat = c
                 prefs.category = c
-                shown = LIST_CHUNK
+                pageIndex = 0
                 refreshFilterRows()
                 render()
             }
@@ -635,7 +701,7 @@ class MainActivity : AppCompatActivity() {
             tv.setOnClickListener {
                 minVotes = value
                 prefs.minVotes = value
-                shown = LIST_CHUNK
+                pageIndex = 0
                 refreshFilterRows()
                 render()
             }
@@ -724,9 +790,23 @@ class MainActivity : AppCompatActivity() {
         holders.clear()
         listContainer.removeAllViews()
 
-        countText.text = "조건 " + filtered.size + "건 · 누적 " + deals.size + "건"
+        // 필터를 적용한 목록 기준 페이지 나누기 (페이지당 60개)
+        pageCount = if (filtered.isEmpty()) 1 else (filtered.size + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE
+        if (pageIndex > pageCount - 1) pageIndex = pageCount - 1
+        if (pageIndex < 0) pageIndex = 0
+        val from = pageIndex * ITEMS_PER_PAGE
+        val to = (from + ITEMS_PER_PAGE).coerceAtMost(filtered.size)
+
+        countText.text = if (filtered.isEmpty() || deals.isEmpty()) {
+            "조건 " + filtered.size + "건 · 누적 " + deals.size + "건"
+        } else {
+            "조건 " + filtered.size + "건 · 누적 " + deals.size + "건 · " +
+                (pageIndex + 1) + "/" + pageCount + "쪽"
+        }
 
         if (deals.isEmpty()) {
+            buildPager(pagerTop, filtered.size, false)
+            buildPager(pagerBottom, filtered.size, false)
             if (lastLoadFailed) {
                 renderEmpty(
                     "불러오지 못했습니다",
@@ -745,7 +825,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val page = filtered.take(shown)
+        val page = if (from < to) filtered.subList(from, to) else emptyList()
         if (page.isEmpty()) {
             renderEmpty(
                 "조건에 맞는 딜이 없습니다",
@@ -761,15 +841,152 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        if (filtered.size > page.size) {
-            listContainer.addView(
-                footerButton("▼ 목록에 " + LIST_CHUNK + "건 더 보기  (남은 " + (filtered.size - page.size) + "건)") {
-                    shown += LIST_CHUNK
-                    render()
-                }
-            )
-        }
+        buildPager(pagerTop, filtered.size, from > 0 || to < filtered.size)
+        buildPager(pagerBottom, filtered.size, from > 0 || to < filtered.size)
         listContainer.addView(deepLoadButton())
+    }
+
+    // ── 페이지 이동 ──────────────────────────────────────
+
+    /**
+     * [◀ 1 2 3 4 ▶  ·  1 / 4] — 필터를 적용한 목록 기준으로 페이지를 고른다.
+     * 목록 위아래에 같은 바를 하나씩 두어, 스크롤이 어디에 있든 페이지를 넘길 수 있다.
+     */
+    private fun buildPager(host: LinearLayout, totalItems: Int, show: Boolean) {
+        host.removeAllViews()
+        if (!show || totalItems <= ITEMS_PER_PAGE) {
+            host.visibility = View.GONE
+            return
+        }
+        host.visibility = View.VISIBLE
+
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val prev = pagerArrow("◀", pageIndex > 0) { goToPage(pageIndex - 1) }
+        row.addView(prev)
+
+        val chips = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        val window = 5
+        var first = (pageIndex - window / 2).coerceAtLeast(0)
+        var last = (first + window).coerceAtMost(pageCount)
+        first = (last - window).coerceAtLeast(0)
+
+        if (first > 0) {
+            chips.addView(pagerEdge(1, 0))
+            if (first > 1) chips.addView(pagerGap())
+        }
+        for (p in first until last) {
+            chips.addView(pagerNumber(p + 1))
+        }
+        if (last < pageCount) {
+            if (last < pageCount - 1) chips.addView(pagerGap())
+            chips.addView(pagerEdge(pageCount, pageCount - 1))
+        }
+        row.addView(
+            chips,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
+
+        val next = pagerArrow("▶", pageIndex < pageCount - 1) { goToPage(pageIndex + 1) }
+        row.addView(next)
+
+        host.addView(
+            row,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        val from = pageIndex * ITEMS_PER_PAGE + 1
+        val to = ((pageIndex + 1) * ITEMS_PER_PAGE).coerceAtMost(totalItems)
+        val caption = ui.text(12f, Colors.DIM2)
+        caption.text = (pageIndex + 1).toString() + " / " + pageCount + " 페이지 · " +
+            from + "~" + to + "번째 (한 쪽에 " + ITEMS_PER_PAGE + "개)"
+        caption.gravity = Gravity.CENTER
+        caption.setPadding(0, ui.dp(6f), 0, 0)
+        host.addView(
+            caption,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+    }
+
+    private fun goToPage(target: Int) {
+        val clamped = target.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
+        if (clamped == pageIndex) {
+            scrollToListTop()
+            return
+        }
+        pageIndex = clamped
+        render()
+        scrollToListTop()
+    }
+
+    /** 페이지를 바꿀 때 목록 맨 위(첫 카드)로 올린다. */
+    private fun scrollToListTop() {
+        uiHandler.post {
+            val header = listContainer.top - ui.dp(6f)
+            scroll.smoothScrollTo(0, header.coerceAtLeast(0))
+        }
+    }
+
+    private fun pagerArrow(label: String, enabled: Boolean, onClick: () -> Unit): TextView {
+        val tv = ui.text(14f, if (enabled) Colors.TXT else Colors.DIM2, true)
+        tv.text = label
+        tv.gravity = Gravity.CENTER
+        tv.width = ui.dp(40f)
+        tv.height = ui.dp(38f)
+        tv.background = ui.round(Colors.CARD, 10f, Colors.LINE, 1f)
+        if (enabled) {
+            tv.isClickable = true
+            tv.setOnClickListener { onClick() }
+        } else {
+            tv.alpha = 0.45f
+        }
+        return tv
+    }
+
+    private fun pagerNumber(number: Int): TextView {
+        val current = number - 1 == pageIndex
+        val tv = ui.text(13.5f, if (current) 0xFFFFFFFF.toInt() else Colors.DIM, current)
+        tv.text = number.toString()
+        tv.gravity = Gravity.CENTER
+        val params = LinearLayout.LayoutParams(ui.dp(34f), ui.dp(34f))
+        params.marginStart = ui.dp(3f)
+        params.marginEnd = ui.dp(3f)
+        tv.layoutParams = params
+        tv.background = if (current) {
+            ui.round(Colors.ACCENT, 10f)
+        } else {
+            ui.round(Colors.BG2, 10f, Colors.LINE, 1f)
+        }
+        tv.isClickable = true
+        tv.setOnClickListener { if (!current) goToPage(number - 1) }
+        return tv
+    }
+
+    /** 첫/마지막 페이지로 바로 가는 끝 번호 */
+    private fun pagerEdge(number: Int, target: Int): TextView {
+        val tv = pagerNumber(number)
+        tv.setOnClickListener { goToPage(target) }
+        return tv
+    }
+
+    private fun pagerGap(): TextView {
+        val tv = ui.text(13f, Colors.DIM2)
+        tv.text = "…"
+        tv.gravity = Gravity.CENTER
+        tv.width = ui.dp(16f)
+        return tv
     }
 
     /** [이전 글 더 불러오기] — 저장된 목록보다 더 내려가 어제·그제 글을 채운다. */
@@ -938,8 +1155,14 @@ class MainActivity : AppCompatActivity() {
         /** 이전 글을 아무리 내려가도 여기까지만 (7일 보관이라 대개 그 전에 멈춘다) */
         private const val DEEP_MAX_PAGE = 120
 
-        /** 한 번에 화면에 그리는 카드 수 */
-        private const val LIST_CHUNK = 40
+        /** 한 페이지에 보여 주는 글 수 */
+        private const val ITEMS_PER_PAGE = 60
+
+        /** 맨 위로 버튼을 띄우는 기준: 이만큼 내려갔을 때만 */
+        private const val TOP_BUTTON_MIN_DP = 320f
+
+        /** 스크롤이 멈춘 뒤 버튼이 나타나기까지 */
+        private const val TOP_BUTTON_DELAY_MS = 400L
 
         private const val PAGE_GAP_MS = 700L
 
