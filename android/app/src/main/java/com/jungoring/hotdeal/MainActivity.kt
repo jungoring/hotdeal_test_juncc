@@ -797,11 +797,11 @@ class MainActivity : AppCompatActivity() {
         val from = pageIndex * ITEMS_PER_PAGE
         val to = (from + ITEMS_PER_PAGE).coerceAtMost(filtered.size)
 
-        countText.text = if (filtered.isEmpty() || deals.isEmpty()) {
-            "조건 " + filtered.size + "건 · 누적 " + deals.size + "건"
-        } else {
-            "조건 " + filtered.size + "건 · 누적 " + deals.size + "건 · " +
+        countText.text = when {
+            filtered.isEmpty() || deals.isEmpty() -> "조건 " + filtered.size + "건 · 누적 " + deals.size + "건"
+            pageCount > 1 -> "조건 " + filtered.size + "건 · 누적 " + deals.size + "건 · " +
                 (pageIndex + 1) + "/" + pageCount + "쪽"
+            else -> "조건 " + filtered.size + "건 · 누적 " + deals.size + "건"
         }
 
         if (deals.isEmpty()) {
