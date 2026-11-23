@@ -287,14 +287,17 @@ class MainActivity : AppCompatActivity() {
     private fun onListScrolled(scrollY: Int) {
         uiHandler.removeCallbacks(topButtonTask)
         fadeTopButton(false)
-        if (scrollY < ui.dp(TOP_BUTTON_MIN_DP) || !canScrollList()) return
+        if (!scrolledIntoList(scrollY)) return
         uiHandler.postDelayed(topButtonTask, TOP_BUTTON_DELAY_MS)
     }
 
+    /** 필터 영역이 아니라 목록 속으로 충분히 내려왔는지 (맨 위 근처에서는 버튼을 띄우지 않는다) */
+    private fun scrolledIntoList(scrollY: Int): Boolean =
+        canScrollList() && scrollY > listContainer.top + ui.dp(TOP_BUTTON_MIN_DP)
+
     private fun revealTopButton() {
         if (challengeBar.visibility == View.VISIBLE) return
-        if (!canScrollList()) return
-        if (scroll.scrollY < ui.dp(TOP_BUTTON_MIN_DP)) return
+        if (!scrolledIntoList(scroll.scrollY)) return
         if (btnTop.visibility != View.VISIBLE) {
             btnTop.visibility = View.VISIBLE
         }
@@ -1158,8 +1161,8 @@ class MainActivity : AppCompatActivity() {
         /** 한 페이지에 보여 주는 글 수 */
         private const val ITEMS_PER_PAGE = 60
 
-        /** 맨 위로 버튼을 띄우는 기준: 이만큼 내려갔을 때만 */
-        private const val TOP_BUTTON_MIN_DP = 320f
+        /** 맨 위로 버튼을 띄우는 기준: 목록 첫 카드에서 이만큼 더 내려갔을 때만 */
+        private const val TOP_BUTTON_MIN_DP = 200f
 
         /** 스크롤이 멈춘 뒤 버튼이 나타나기까지 */
         private const val TOP_BUTTON_DELAY_MS = 400L
